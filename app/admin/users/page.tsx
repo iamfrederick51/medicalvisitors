@@ -1,0 +1,448 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { useQuery, useMutation } from "convex/react";
+import { useAuthActions } from "@convex-dev/auth/react";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { api } from "@/convex/_generated/api";
+import { Id } from "@/convex/_generated/dataModel";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { Navigation } from "@/components/Navigation";
+import { VisitorItem } from "@/components/VisitorItem";
+import { Users, Plus, Eye, EyeOff, Trash2 } from "lucide-react";
+
+function UsersContent() {
+  const { t } = useLanguage();
+  const visitors = useQuery(api.users.list);
+  const doctors = useQuery(api.doctors.list);
+  const medications = useQuery(api.medications.list);
+  const createVisitor = useMutation(api.users.create);
+  const updateAssignments = useMutation(api.users.updateAssignments);
+  const deleteUserMutation = useMutation(api.users.deleteUser);
+  const { signIn, signOut } = useAuthActions();
+
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [editingUserId, setEditingUserId] = useState<Id<"users"> | null>(null);
+  
+  // Estados del formulario
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+  const [role, setRole] = useState<"admin" | "visitor">("visitor");
+  const [selectedDoctors, setSelectedDoctors] = useState<Id<"doctors">[]>([]);
+  const [selectedMedications, setSelectedMedications] = useState<Id<"medications">[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+
+  // Resetear formulario cuando se abre
+  useEffect(() => {
+    if (showCreateForm) {
+      setUsername("");
+      setPassword("");
+      setName("");
+      setRole("visitor");
+      setSelectedDoctors([]);
+      setSelectedMedications([]);
+      setShowPassword(false);
+    }
+  }, [showCreateForm]);
+
+  const handleCreateVisitor = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    
+    try {
+      // Primero crear el usuario usando signIn con flow: "signUp" desde el cliente
+      // Esto creará el usuario con el password correctamente
+      // Nota: Esto podría iniciar sesión como el nuevo usuario, pero lo manejaremos después
+      let userCreated = false;
+      try {
+        await signIn("password", {
+          email: username,
+          password,
+          flow: "signUp",
+        });
+        userCreated = true;
+      } catch (signUpError: any) {
+        // Si el usuario ya existe, continuar con la creación del perfil
+        const errorMsg = signUpError.message?.toLowerCase() || "";
+        if (errorMsg.includes("already exists") || 
+            errorMsg.includes("already registered") ||
+            errorMsg.includes("user already exists")) {
+          userCreated = true; // El usuario ya existe, podemos continuar
+        } else {
+          // Si es otro error, lanzarlo
+          throw signUpError;
+        }
+      }
+      
+      // Luego crear/actualizar el perfil con el rol y asignaciones
+      // Nota: En este punto, si se creó un nuevo usuario, estamos autenticados como ese usuario
+      const result = await createVisitor({
+        username,
+        password, // Se pasa pero no se usa si el usuario ya existe
+        name: name || undefined,
+        role: role,
+        // Solo asignar doctores y medicamentos si es visitador
+        assignedDoctors: role === "visitor" ? selectedDoctors : [],
+        assignedMedications: role === "visitor" ? selectedMedications : [],
+      });
+      
+      // Resetear formulario inmediatamente después de creación exitosa
+      if (result.success) {
+        setUsername("");
+        setPassword("");
+        setName("");
+        setRole("visitor");
+        setSelectedDoctors([]);
+        setSelectedMedications([]);
+        setShowPassword(false);
+      }
+      
+      // Si se creó un nuevo usuario, ahora estamos autenticados como él
+      // Necesitamos cerrar sesión para que el admin pueda volver a iniciar sesión
+      if (userCreated && result.success) {
+        // Cerrar sesión del nuevo usuario
+        try {
+          await signOut();
+        } catch (signOutError) {
+          console.error("Error signing out:", signOutError);
+        }
+        // Mostrar mensaje antes de redirigir
+        if (result.message) {
+          alert(result.message);
+        } else {
+          alert("Usuario creado exitosamente. Serás redirigido al login.");
+        }
+        // Redirigir al login para que el admin pueda volver a iniciar sesión
+        window.location.href = "/login";
+        return; // Salir temprano
+      }
+      
+      // Si solo se actualizó el perfil (usuario existente), mantener el formulario abierto pero reseteado
+      if (result.success) {
+        if (result.message) {
+          alert(result.message);
+        } else {
+          alert("Usuario actualizado exitosamente");
+        }
+        // El formulario ya fue reseteado arriba, mantenerlo abierto para crear otro usuario
+      } else {
+        alert(result.message || "Error al crear el usuario.");
+      }
+    } catch (error: any) {
+      console.error("Error creating user:", error);
+      alert("Error al crear usuario: " + (error.message || "Error desconocido"));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleUpdateAssignments = async (userId: Id<"users">, doctors: Id<"doctors">[], medications: Id<"medications">[]) => {
+    try {
+      await updateAssignments({
+        userId,
+        assignedDoctors: doctors,
+        assignedMedications: medications,
+      });
+      setEditingUserId(null);
+      alert("Asignaciones actualizadas exitosamente");
+    } catch (error: any) {
+      console.error("Error updating assignments:", error);
+      alert("Error al actualizar asignaciones: " + (error.message || "Error desconocido"));
+    }
+  };
+
+  const handleDeleteUser = async (userId: Id<"users">) => {
+    // Confirmar eliminación
+    const confirmed = window.confirm(
+      "¿Estás seguro de que deseas eliminar este usuario? Esta acción no se puede deshacer."
+    );
+    
+    if (!confirmed) {
+      return;
+    }
+    
+    try {
+      await deleteUserMutation({ userId });
+      alert("Usuario eliminado exitosamente");
+      // Si estaba editando este usuario, cancelar la edición
+      if (editingUserId === userId) {
+        setEditingUserId(null);
+      }
+    } catch (error: any) {
+      console.error("Error deleting user:", error);
+      alert("Error al eliminar usuario: " + (error.message || "Error desconocido"));
+    }
+  };
+
+  const toggleDoctor = (doctorId: Id<"doctors">, currentList: Id<"doctors">[]) => {
+    if (currentList.includes(doctorId)) {
+      return currentList.filter(id => id !== doctorId);
+    } else {
+      return [...currentList, doctorId];
+    }
+  };
+
+  const toggleMedication = (medicationId: Id<"medications">, currentList: Id<"medications">[]) => {
+    if (currentList.includes(medicationId)) {
+      return currentList.filter(id => id !== medicationId);
+    } else {
+      return [...currentList, medicationId];
+    }
+  };
+
+  return (
+    <ProtectedRoute>
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50">
+        <Navigation />
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="flex justify-between items-center mb-6">
+            <div className="flex items-center gap-3">
+              <Users className="w-8 h-8 text-blue-600" />
+              <h1 className="text-3xl font-semibold text-gray-900 tracking-tight">
+                Gestionar Usuarios
+              </h1>
+            </div>
+            <button
+              onClick={() => setShowCreateForm(!showCreateForm)}
+              className="flex items-center gap-2 bg-blue-600 text-white px-5 py-2.5 rounded-xl hover:bg-blue-700 active:scale-95 transition-all duration-200 font-semibold shadow-sm hover:shadow-md"
+            >
+              <Plus className="w-5 h-5" />
+              Crear Usuario
+            </button>
+          </div>
+
+          {/* Formulario de creación */}
+          {showCreateForm && (
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">Crear Nuevo Usuario</h2>
+              <form onSubmit={handleCreateVisitor} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Usuario *
+                    </label>
+                    <input
+                      type="text"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      required
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all outline-none"
+                      placeholder="Nombre de usuario"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Contraseña *
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        required
+                        minLength={6}
+                        className="w-full px-4 py-3 pr-12 border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 transition-colors"
+                        tabIndex={-1}
+                      >
+                        {showPassword ? (
+                          <EyeOff className="w-5 h-5" />
+                        ) : (
+                          <Eye className="w-5 h-5" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Nombre
+                  </label>
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all outline-none"
+                    placeholder="Nombre completo del usuario"
+                  />
+                </div>
+
+                {/* Selección de rol */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Rol *
+                  </label>
+                  <select
+                    value={role}
+                    onChange={(e) => setRole(e.target.value as "admin" | "visitor")}
+                    required
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all outline-none"
+                  >
+                    <option value="visitor">Visitador Médico</option>
+                    <option value="admin">Administrador</option>
+                  </select>
+                </div>
+
+                {/* Selección de doctores - Solo para visitadores */}
+                {role === "visitor" && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Doctores Asignados
+                  </label>
+                  <div className="border border-gray-200 rounded-xl p-4 max-h-48 overflow-y-auto">
+                    {doctors === undefined ? (
+                      <p className="text-gray-500">Cargando doctores...</p>
+                    ) : doctors.length === 0 ? (
+                      <p className="text-gray-500">No hay doctores disponibles</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {doctors.map((doctor) => (
+                          <label
+                            key={doctor._id}
+                            className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded-lg cursor-pointer"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedDoctors.includes(doctor._id)}
+                              onChange={() => setSelectedDoctors(toggleDoctor(doctor._id, selectedDoctors))}
+                              className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                            />
+                            <div>
+                              <span className="font-medium text-gray-900">{doctor.name}</span>
+                              {doctor.specialty && (
+                                <span className="text-sm text-gray-500 ml-2">- {doctor.specialty}</span>
+                              )}
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                )}
+
+                {/* Selección de medicamentos - Solo para visitadores */}
+                {role === "visitor" && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Medicamentos Asignados
+                  </label>
+                  <div className="border border-gray-200 rounded-xl p-4 max-h-48 overflow-y-auto">
+                    {medications === undefined ? (
+                      <p className="text-gray-500">Cargando medicamentos...</p>
+                    ) : medications.length === 0 ? (
+                      <p className="text-gray-500">No hay medicamentos disponibles</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {medications.map((medication) => (
+                          <label
+                            key={medication._id}
+                            className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded-lg cursor-pointer"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedMedications.includes(medication._id)}
+                              onChange={() => setSelectedMedications(toggleMedication(medication._id, selectedMedications))}
+                              className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                            />
+                            <span className="font-medium text-gray-900">{medication.name}</span>
+                            {medication.unit && (
+                              <span className="text-sm text-gray-500">({medication.unit})</span>
+                            )}
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                )}
+
+                <div className="flex gap-3">
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 active:scale-95 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md"
+                  >
+                    {isSubmitting ? "Creando..." : "Crear Usuario"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowCreateForm(false);
+                      setUsername("");
+                      setPassword("");
+                      setName("");
+                      setRole("visitor");
+                      setSelectedDoctors([]);
+                      setSelectedMedications([]);
+                    }}
+                    className="px-6 py-3 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors font-medium"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+
+          {/* Lista de visitadores */}
+          <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm border border-gray-100 p-6">
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">Visitadores Registrados</h2>
+            {visitors === undefined ? (
+              <div className="text-center py-8">
+                <p className="text-gray-500">Cargando visitadores...</p>
+              </div>
+            ) : visitors.length === 0 ? (
+              <div className="text-center py-8">
+                <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                <p className="text-gray-500">No hay visitadores registrados</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {visitors.map((visitor) => {
+                  const isEditing = editingUserId === visitor.userId;
+                  // Usar estados locales solo cuando se está editando
+                  const initialDoctors = visitor.assignedDoctors?.map(d => d._id) || [];
+                  const initialMedications = visitor.assignedMedications?.map(m => m._id) || [];
+
+                  return (
+                    <VisitorItem
+                      key={visitor._id}
+                      visitor={visitor}
+                      isEditing={isEditing}
+                      initialDoctors={initialDoctors}
+                      initialMedications={initialMedications}
+                      doctors={doctors || []}
+                      medications={medications || []}
+                      onEdit={() => {
+                        if (isEditing) {
+                          setEditingUserId(null);
+                        } else {
+                          setEditingUserId(visitor.userId);
+                        }
+                      }}
+                      onSave={handleUpdateAssignments}
+                      onDelete={handleDeleteUser}
+                      toggleDoctor={toggleDoctor}
+                      toggleMedication={toggleMedication}
+                    />
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </ProtectedRoute>
+  );
+}
+
+export default function UsersPage() {
+  return <UsersContent />;
+}

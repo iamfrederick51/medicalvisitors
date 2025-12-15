@@ -1,0 +1,86 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "visits": "Visits",
+    "doctors": "Doctors",
+    "medications": "Medications",
+    "signOut": "Sign Out"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "recentVisits": "Recent Visits",
+    "noVisits": "No recent visits",
+    "statistics": "Statistics",
+    "totalVisits": "Total Visits",
+    "totalDoctors": "Total Doctors",
+    "totalMedications": "Total Medications"
+  },
+  "visits": {
+    "title": "Visits",
+    "newVisit": "New Visit",
+    "noVisits": "No visits registered",
+    "doctor": "Doctor",
+    "date": "Date",
+    "medications": "Medications",
+    "status": "Status",
+    "notes": "Notes",
+    "completed": "Completed",
+    "pending": "Pending",
+    "cancelled": "Cancelled",
+    "createVisit": "Create Visit",
+    "selectDoctor": "Select Doctor",
+    "selectDate": "Select Date",
+    "addMedication": "Add Medication",
+    "quantity": "Quantity",
+    "save": "Save",
+    "cancel": "Cancel"
+  },
+  "doctors": {
+    "title": "Doctors",
+    "newDoctor": "New Doctor",
+    "noDoctors": "No doctors registered",
+    "name": "Name",
+    "specialty": "Specialty",
+    "email": "Email",
+    "phone": "Phone",
+    "medicalCenters": "Medical Centers",
+    "createDoctor": "Create Doctor",
+    "addMedicalCenter": "Add Medical Center",
+    "maxCenters": "Maximum 2 medical centers",
+    "save": "Save",
+    "cancel": "Cancel"
+  },
+  "medications": {
+    "title": "Medications",
+    "newMedication": "New Medication",
+    "noMedications": "No medications registered",
+    "name": "Name",
+    "description": "Description",
+    "unit": "Unit",
+    "units": "Units",
+    "boxes": "Boxes",
+    "samples": "Samples",
+    "createMedication": "Create Medication",
+    "save": "Save",
+    "cancel": "Cancel"
+  },
+  "medicalCenters": {
+    "title": "Medical Centers",
+    "name": "Name",
+    "address": "Address",
+    "city": "City",
+    "phone": "Phone",
+    "createCenter": "Create Medical Center",
+    "save": "Save",
+    "cancel": "Cancel"
+  },
+  "common": {
+    "loading": "Loading...",
+    "error": "Error",
+    "success": "Success",
+    "delete": "Delete",
+    "edit": "Edit",
+    "back": "Back"
+  }
+}
+

@@ -1,0 +1,86 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "visits": "Visitas",
+    "doctors": "Doctores",
+    "medications": "Medicamentos",
+    "signOut": "Cerrar Sesión"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "recentVisits": "Visitas Recientes",
+    "noVisits": "No hay visitas recientes",
+    "statistics": "Estadísticas",
+    "totalVisits": "Total de Visitas",
+    "totalDoctors": "Total de Doctores",
+    "totalMedications": "Total de Medicamentos"
+  },
+  "visits": {
+    "title": "Visitas",
+    "newVisit": "Nueva Visita",
+    "noVisits": "No hay visitas registradas",
+    "doctor": "Doctor",
+    "date": "Fecha",
+    "medications": "Medicamentos",
+    "status": "Estado",
+    "notes": "Notas",
+    "completed": "Completada",
+    "pending": "Pendiente",
+    "cancelled": "Cancelada",
+    "createVisit": "Crear Visita",
+    "selectDoctor": "Seleccionar Doctor",
+    "selectDate": "Seleccionar Fecha",
+    "addMedication": "Agregar Medicamento",
+    "quantity": "Cantidad",
+    "save": "Guardar",
+    "cancel": "Cancelar"
+  },
+  "doctors": {
+    "title": "Doctores",
+    "newDoctor": "Nuevo Doctor",
+    "noDoctors": "No hay doctores registrados",
+    "name": "Nombre",
+    "specialty": "Especialidad",
+    "email": "Email",
+    "phone": "Teléfono",
+    "medicalCenters": "Centros Médicos",
+    "createDoctor": "Crear Doctor",
+    "addMedicalCenter": "Agregar Centro Médico",
+    "maxCenters": "Máximo 2 centros médicos",
+    "save": "Guardar",
+    "cancel": "Cancelar"
+  },
+  "medications": {
+    "title": "Medicamentos",
+    "newMedication": "Nuevo Medicamento",
+    "noMedications": "No hay medicamentos registrados",
+    "name": "Nombre",
+    "description": "Descripción",
+    "unit": "Unidad",
+    "units": "Unidades",
+    "boxes": "Cajas",
+    "samples": "Muestras",
+    "createMedication": "Crear Medicamento",
+    "save": "Guardar",
+    "cancel": "Cancelar"
+  },
+  "medicalCenters": {
+    "title": "Centros Médicos",
+    "name": "Nombre",
+    "address": "Dirección",
+    "city": "Ciudad",
+    "phone": "Teléfono",
+    "createCenter": "Crear Centro Médico",
+    "save": "Guardar",
+    "cancel": "Cancelar"
+  },
+  "common": {
+    "loading": "Cargando...",
+    "error": "Error",
+    "success": "Éxito",
+    "delete": "Eliminar",
+    "edit": "Editar",
+    "back": "Volver"
+  }
+}
+
