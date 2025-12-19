@@ -1,6 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
-import { getAuthUserId } from "@convex-dev/auth/server";
+import { getClerkUserId } from "./auth";
 
 // Crear log de actividad
 export const create = mutation({
@@ -11,7 +11,7 @@ export const create = mutation({
     details: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx);
+    const userId = await getClerkUserId(ctx);
     if (!userId) {
       throw new Error("Not authenticated");
     }
@@ -40,10 +40,9 @@ export const list = query({
       .order("desc")
       .take(args.limit || 100);
     
-    // Enriquecer con información del usuario
+    // Enriquecer con información del perfil de usuario
     const logsWithUsers = await Promise.all(
       logs.map(async (log) => {
-        const user = await ctx.db.get(log.userId);
         const userProfile = await ctx.db
           .query("userProfiles")
           .withIndex("by_userId", (q) => q.eq("userId", log.userId))
@@ -51,8 +50,9 @@ export const list = query({
         
         return {
           ...log,
-          userEmail: (user as any)?.email || null,
+          userEmail: null, // Email se obtiene de Clerk, no de Convex
           userName: userProfile?.name || null,
+          userId: log.userId, // Clerk user ID
         };
       })
     );

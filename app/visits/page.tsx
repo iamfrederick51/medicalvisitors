@@ -39,7 +39,7 @@ function VisitsContent() {
               <p className="mt-4 text-gray-600">{t("common.loading")}</p>
             </div>
           ) : visits.length === 0 ? (
-            <div className="bg-white rounded-xl shadow-md p-12 text-center">
+            <div className="bg-white rounded-3xl shadow-xl p-12 text-center">
               <p className="text-gray-500 text-lg mb-4">{t("visits.noVisits")}</p>
               <Link
                 href="/visits/new"

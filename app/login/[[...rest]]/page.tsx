@@ -1,0 +1,37 @@
+"use client";
+
+import { SignIn } from "@clerk/nextjs";
+import { Stethoscope } from "lucide-react";
+
+/**
+ * Página de login
+ * 
+ * El middleware se encarga de redirigir usuarios autenticados desde /login
+ * Esta página solo muestra el formulario de login de Clerk
+ */
+export default function LoginPage() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100">
+      <div className="w-full max-w-md">
+        <div className="flex items-center justify-center gap-2 mb-6">
+          <Stethoscope className="w-8 h-8 text-blue-600" />
+          <h1 className="text-2xl font-bold text-gray-800">Medical Visitor</h1>
+        </div>
+        <div className="bg-white p-8 rounded-2xl shadow-xl">
+          <SignIn
+            path="/login"
+            signUpUrl="/sign-up"
+            afterSignInUrl="/post-login"
+            afterSignUpUrl="/post-login"
+            appearance={{
+              elements: {
+                rootBox: "mx-auto",
+                card: "shadow-none",
+              },
+            }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}

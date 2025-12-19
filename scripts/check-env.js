@@ -27,6 +27,7 @@ if (!hasConvexUrl || !envContent.match(/NEXT_PUBLIC_CONVEX_URL\s*=\s*.+/)) {
   console.log('📝 Para solucionarlo:\n');
   console.log('   1. Ejecuta: npx convex dev');
   console.log('   2. Esto actualizará el archivo .env.local con tu URL de Convex\n');
+  console.log('   Nota: En local, la URL correcta suele ser http://127.0.0.1:3210 (6790 es el dashboard)\n');
   process.exit(1);
 }
 

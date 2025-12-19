@@ -34,6 +34,8 @@ npm install
 ```
 
 2. **Configura Convex (OBLIGATORIO):**
+
+#### Para Desarrollo Local:
 ```bash
 npx convex dev
 ```
@@ -46,12 +48,30 @@ Este comando:
 
 **Nota:** Debes mantener `npx convex dev` ejecutándose en una terminal mientras desarrollas.
 
+#### Para Producción:
+1. Inicia sesión en el [Dashboard de Convex](https://dashboard.convex.dev)
+2. Selecciona tu proyecto o crea uno nuevo
+3. Ve a **Settings → Deployment URL**
+4. Copia la URL de tu deployment (formato: `https://tu-proyecto.convex.cloud`)
+5. Crea un archivo `.env.local` en la raíz del proyecto:
+```bash
+NEXT_PUBLIC_CONVEX_URL=https://tu-proyecto.convex.cloud
+```
+6. Despliega tus funciones de Convex:
+```bash
+npx convex deploy
+```
+
 3. En otra terminal, inicia el servidor de Next.js:
 ```bash
 npm run dev
 ```
 
 4. Abre [http://localhost:3000](http://localhost:3000) en tu navegador.
+
+**⚠️ Nota sobre `.env.local`:** 
+- Este archivo NO debe subirse a Git (ya está en `.gitignore`)
+- Después de crear o modificar `.env.local`, **debes reiniciar el servidor de Next.js** para que cargue las nuevas variables de entorno
 
 ### Solución de Problemas
 

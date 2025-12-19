@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
-import { Navigation } from "@/components/Navigation";
 import { FileSpreadsheet, Download, Loader2 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { format } from "date-fns";
@@ -86,9 +85,7 @@ function ExportContent() {
 
   return (
     <ProtectedRoute>
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50">
-        <Navigation />
-        <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-4 sm:py-6 md:py-8">
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-4 sm:py-6 md:py-8">
           <div className="mb-4 sm:mb-6 md:mb-8">
             <div className="flex items-center gap-3 mb-2">
               <FileSpreadsheet className="w-6 h-6 sm:w-8 sm:h-8 text-orange-600" />

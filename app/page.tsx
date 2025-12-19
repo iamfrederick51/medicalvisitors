@@ -1,8 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import React from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import { useUser } from "@clerk/nextjs";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { Navigation } from "@/components/Navigation";
 import { LanguageToggle } from "@/components/LanguageToggle";
@@ -15,25 +18,48 @@ import Link from "next/link";
 import { Id } from "@/convex/_generated/dataModel";
 
 function DashboardContent() {
-  const { t } = useLanguage();
+  // IMPORTANTE: Todos los hooks deben llamarse ANTES de cualquier early return
+  // para mantener la consistencia del orden de hooks entre renders
   
-  // Cargar queries críticas primero
-  const recentVisits = useQuery(api.visits.getRecent, { limit: 5 });
-  const doctors = useQuery(api.doctors.list);
-  const availableMedications = useQuery(api.medications.list);
-  const medicalCenters = useQuery(api.medicalCenters.list);
+  const { t } = useLanguage();
+  const router = useRouter();
+  const { user, isLoaded } = useUser();
+  
+  // Cargar queries críticas primero - TODOS los hooks deben estar aquí
+  const recentVisits = useQuery(api.visits.getRecentByVisitor, { limit: 10 });
+  const currentAssignments = useQuery(api.userProfiles.getCurrentAssignments);
+  const allDoctors = useQuery(api.doctors.list);
+  const allMedications = useQuery(api.medications.list);
+  const allMedicalCenters = useQuery(api.medicalCenters.list);
   // Lazy load: allVisits solo se carga cuando es necesario (para estadísticas)
   const allVisits = useQuery(api.visits.list);
   const createVisit = useMutation(api.visits.create);
 
-  // Estados para el formulario de registro rápido
+  // Estados para el formulario de registro rápido - TODOS los useState deben estar aquí
   const [doctorId, setDoctorId] = useState<Id<"doctors"> | undefined>();
   const [selectedDoctor, setSelectedDoctor] = useState<any>(null);
   const [selectedMedicalCenterId, setSelectedMedicalCenterId] = useState<Id<"medicalCenters"> | "">("");
   const [selectedMedications, setSelectedMedications] = useState<Array<{ medicationId: Id<"medications">; quantity: number; notes?: string }>>([]);
+  const [notes, setNotes] = useState("");
   const [isMedicationSelectorOpen, setIsMedicationSelectorOpen] = useState(false);
   const [medicationSearchTerm, setMedicationSearchTerm] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Filtrar doctores, medicamentos y centros médicos según asignaciones del visitador
+  const doctors = currentAssignments?.assignedDoctors 
+    ? allDoctors?.filter(d => currentAssignments.assignedDoctors.some(ad => ad._id === d._id)) || []
+    : allDoctors || [];
+  
+  const availableMedications = currentAssignments?.assignedMedications
+    ? allMedications?.filter(m => currentAssignments.assignedMedications.some(am => am._id === m._id)) || []
+    : allMedications || [];
+  
+  const medicalCenters = currentAssignments?.assignedMedicalCenters
+    ? allMedicalCenters?.filter(mc => currentAssignments.assignedMedicalCenters.some(amc => amc._id === mc._id)) || []
+    : allMedicalCenters || [];
+  
+  // El middleware se encarga de redirigir admins a /admin
+  // No necesitamos hacer redirect aquí durante el render
 
   // Fecha y hora actuales (fijas)
   const currentDate = new Date();
@@ -41,19 +67,19 @@ function DashboardContent() {
   const formattedTime = format(currentDate, "HH:mm");
   const dateTimeTimestamp = currentDate.getTime();
 
-  // Calcular estadísticas de forma optimizada
+  // Calcular estadísticas de forma optimizada (usar todas las listas, no las filtradas)
   const stats = {
     totalVisits: allVisits?.length ?? 0,
-    totalDoctors: doctors?.length ?? 0,
-    totalMedications: availableMedications?.length ?? 0,
+    totalDoctors: allDoctors?.length ?? 0,
+    totalMedications: allMedications?.length ?? 0,
   };
 
-  // Obtener centros médicos del doctor seleccionado
+  // Obtener centros médicos disponibles (ya filtrados por asignaciones, pero también del doctor seleccionado si aplica)
   const availableCenters = selectedDoctor?.medicalCenters 
-    ? medicalCenters?.filter(center => 
+    ? medicalCenters.filter(center => 
         selectedDoctor.medicalCenters.includes(center._id)
-      ) || []
-    : [];
+      )
+    : medicalCenters;
 
   const handleDoctorSelect = (doctor: any) => {
     setSelectedDoctor(doctor);
@@ -95,7 +121,9 @@ function DashboardContent() {
       await createVisit({
         doctorId,
         date: dateTimeTimestamp,
+        medicalCenterId: selectedMedicalCenterId || undefined,
         medications: selectedMedications,
+        notes: notes || undefined,
         status: "completed",
       });
       // Resetear formulario
@@ -103,6 +131,7 @@ function DashboardContent() {
       setSelectedDoctor(null);
       setSelectedMedicalCenterId("");
       setSelectedMedications([]);
+      setNotes("");
       setMedicationSearchTerm("");
       // Recargar la página para mostrar la nueva visita
       window.location.reload();
@@ -128,7 +157,7 @@ function DashboardContent() {
 
           {/* Statistics Cards - Side by Side */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 p-6 border border-gray-100">
+            <div className="bg-white rounded-3xl shadow-xl hover:shadow-2xl transition-all duration-300 p-6 border border-gray-100 hover:scale-105 active:scale-95">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-gray-500 text-sm font-medium mb-1">
@@ -147,7 +176,7 @@ function DashboardContent() {
                 </div>
               </div>
             </div>
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 p-6 border border-gray-100">
+            <div className="bg-white rounded-3xl shadow-xl hover:shadow-2xl transition-all duration-300 p-6 border border-gray-100 hover:scale-105 active:scale-95">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-gray-500 text-sm font-medium mb-1">
@@ -166,7 +195,7 @@ function DashboardContent() {
                 </div>
               </div>
             </div>
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 p-6 border border-gray-100">
+            <div className="bg-white rounded-3xl shadow-xl hover:shadow-2xl transition-all duration-300 p-6 border border-gray-100 hover:scale-105 active:scale-95">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-gray-500 text-sm font-medium mb-1">
@@ -254,7 +283,7 @@ function DashboardContent() {
                       <select
                         value={selectedMedicalCenterId}
                         onChange={(e) => setSelectedMedicalCenterId(e.target.value as Id<"medicalCenters">)}
-                        className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all outline-none"
+                        className="w-full px-4 py-3 border-2 border-gray-200 rounded-2xl bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all outline-none hover:border-gray-300"
                       >
                         <option value="">Seleccionar centro médico</option>
                         {availableCenters.map((center) => (
@@ -362,10 +391,24 @@ function DashboardContent() {
                     )}
                   </div>
 
+                  {/* Campo de notas opcional */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">
+                      Notas (Opcional)
+                    </label>
+                    <textarea
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      rows={3}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all outline-none resize-none"
+                      placeholder="Agregar notas sobre la visita..."
+                    />
+                  </div>
+
                   <button
                     type="submit"
                     disabled={!doctorId || isSubmitting}
-                    className="w-full bg-blue-400 text-white py-3.5 rounded-xl font-semibold hover:bg-blue-500 active:scale-[0.98] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 flex items-center justify-center gap-2 shadow-sm hover:shadow-md"
+                    className="w-full bg-gradient-to-r from-blue-500 to-blue-600 text-white py-3.5 rounded-2xl font-semibold hover:from-blue-600 hover:to-blue-700 active:scale-95 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 flex items-center justify-center gap-2 shadow-xl hover:shadow-2xl"
                   >
                     <Plus className="w-5 h-5" />
                     {isSubmitting ? "Registrando..." : "Registrar Cita"}
@@ -376,7 +419,7 @@ function DashboardContent() {
 
             {/* Columna derecha: Visitas Recientes */}
             <div className="lg:col-span-2">
-              <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm border border-gray-100 p-6">
+              <div className="bg-white rounded-3xl shadow-xl border border-gray-100 p-8">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-2xl font-semibold text-gray-900 tracking-tight">
                 {t("dashboard.recentVisits")}
@@ -389,18 +432,31 @@ function DashboardContent() {
               </Link>
             </div>
             {recentVisits === undefined ? (
-              <div className="space-y-4">
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="border border-gray-200 rounded-lg p-4 animate-pulse">
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
-                        <div className="h-5 bg-gray-200 rounded w-48 mb-2"></div>
-                        <div className="h-4 bg-gray-200 rounded w-32"></div>
-                      </div>
-                      <div className="h-6 bg-gray-200 rounded w-20"></div>
-                    </div>
-                  </div>
-                ))}
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-gray-200">
+                      <th className="text-left py-3 px-4 font-semibold text-gray-700">Visitador</th>
+                      <th className="text-left py-3 px-4 font-semibold text-gray-700">Doctor</th>
+                      <th className="text-left py-3 px-4 font-semibold text-gray-700">Fecha</th>
+                      <th className="text-left py-3 px-4 font-semibold text-gray-700">Hora</th>
+                      <th className="text-left py-3 px-4 font-semibold text-gray-700">Medicamentos</th>
+                      <th className="text-left py-3 px-4 font-semibold text-gray-700">Centro Médico</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[1, 2, 3].map((i) => (
+                      <tr key={i} className="border-b border-gray-100 animate-pulse">
+                        <td className="py-4 px-4"><div className="h-4 bg-gray-200 rounded w-24"></div></td>
+                        <td className="py-4 px-4"><div className="h-4 bg-gray-200 rounded w-32"></div></td>
+                        <td className="py-4 px-4"><div className="h-4 bg-gray-200 rounded w-28"></div></td>
+                        <td className="py-4 px-4"><div className="h-4 bg-gray-200 rounded w-16"></div></td>
+                        <td className="py-4 px-4"><div className="h-4 bg-gray-200 rounded w-40"></div></td>
+                        <td className="py-4 px-4"><div className="h-4 bg-gray-200 rounded w-36"></div></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             ) : recentVisits.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16">
@@ -412,55 +468,89 @@ function DashboardContent() {
                 </p>
               </div>
             ) : (
-              <div className="space-y-3">
-                {((recentVisits || []) as Array<{
-                  _id: string;
-                  date?: number;
-                  status?: "completed" | "pending" | "cancelled";
-                  doctor?: { name?: string; specialty?: string } | null;
-                }>).map((visit) => {
-                  const visitDate = visit.date;
-                  const visitStatus = visit.status;
-                  return (
-                    <div
-                      key={visit._id}
-                      className="border border-gray-200 rounded-xl p-4 hover:shadow-md hover:border-gray-300 transition-all duration-200 bg-white/50"
-            >
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <h3 className="font-semibold text-gray-900 text-lg">
-                            {visit.doctor?.name || "Unknown Doctor"}
-                          </h3>
-                          {visitDate && (
-                            <p className="text-sm text-gray-500 mt-1">
-                              {format(new Date(visitDate), "PPP")}
-                            </p>
-                          )}
-                          {visit.doctor?.specialty && (
-                            <p className="text-sm text-gray-400 mt-1">
-                              {visit.doctor.specialty}
-                            </p>
-                          )}
-        </div>
-                        {visitStatus && (
-                          <div className="flex items-center gap-2">
-                            <span
-                              className={`px-3 py-1.5 rounded-full text-xs font-semibold ${
-                                visitStatus === "completed"
-                                  ? "bg-green-100 text-green-700"
-                                  : visitStatus === "pending"
-                                  ? "bg-yellow-100 text-yellow-700"
-                                  : "bg-red-100 text-red-700"
-                              }`}
-                            >
-                              {t(`visits.${visitStatus}`)}
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b-2 border-gray-200 bg-gray-50">
+                      <th className="text-left py-3 px-4 font-semibold text-gray-700 text-sm uppercase tracking-wide">Visitador</th>
+                      <th className="text-left py-3 px-4 font-semibold text-gray-700 text-sm uppercase tracking-wide">Doctor</th>
+                      <th className="text-left py-3 px-4 font-semibold text-gray-700 text-sm uppercase tracking-wide">Fecha</th>
+                      <th className="text-left py-3 px-4 font-semibold text-gray-700 text-sm uppercase tracking-wide">Hora</th>
+                      <th className="text-left py-3 px-4 font-semibold text-gray-700 text-sm uppercase tracking-wide">Medicamentos</th>
+                      <th className="text-left py-3 px-4 font-semibold text-gray-700 text-sm uppercase tracking-wide">Centro Médico</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recentVisits.map((visit: any) => {
+                      const visitDate = visit.date ? new Date(visit.date) : null;
+                      const formattedDate = visitDate ? format(visitDate, "dd/MM/yyyy", { locale: es }) : "-";
+                      const formattedTime = visitDate ? format(visitDate, "HH:mm", { locale: es }) : "-";
+                      
+                      return (
+                        <tr 
+                          key={visit._id} 
+                          className="border-b border-gray-100 hover:bg-blue-50/50 transition-colors duration-150"
+                        >
+                          <td className="py-4 px-4">
+                            <span className="font-medium text-gray-900">
+                              {visit.visitor?.name || "N/A"}
                             </span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
+                          </td>
+                          <td className="py-4 px-4">
+                            <div>
+                              <span className="font-medium text-gray-900 block">
+                                {visit.doctor?.name || "N/A"}
+                              </span>
+                              {visit.doctor?.specialty && (
+                                <span className="text-xs text-gray-500">
+                                  {visit.doctor.specialty}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-4 px-4">
+                            <span className="text-gray-700">{formattedDate}</span>
+                          </td>
+                          <td className="py-4 px-4">
+                            <span className="text-gray-700 font-medium">{formattedTime}</span>
+                          </td>
+                          <td className="py-4 px-4">
+                            <div className="space-y-1">
+                              {visit.medications && visit.medications.length > 0 ? (
+                                visit.medications.map((med: any, idx: number) => (
+                                  <div key={idx} className="text-sm text-gray-700">
+                                    <span className="font-medium">{med.medication?.name || "N/A"}</span>
+                                    <span className="text-gray-500 ml-2">
+                                      (Cant: {med.quantity} {med.medication?.unit || ""})
+                                    </span>
+                                  </div>
+                                ))
+                              ) : (
+                                <span className="text-gray-400 text-sm">Sin medicamentos</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-4 px-4">
+                            {visit.medicalCenter ? (
+                              <div>
+                                <span className="font-medium text-gray-900 block">
+                                  {visit.medicalCenter.name}
+                                </span>
+                                {visit.medicalCenter.city && (
+                                  <span className="text-xs text-gray-500">
+                                    {visit.medicalCenter.city}
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-gray-400 text-sm">N/A</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             )}
               </div>

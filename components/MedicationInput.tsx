@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -16,11 +17,14 @@ interface MedicationItem {
 interface MedicationInputProps {
   value: MedicationItem[];
   onChange: (medications: MedicationItem[]) => void;
+  availableMedications?: any[];
 }
 
-export function MedicationInput({ value, onChange }: MedicationInputProps) {
+export function MedicationInput({ value, onChange, availableMedications }: MedicationInputProps) {
   const { t } = useLanguage();
-  const medications = useQuery(api.medications.list);
+  const allMedications = useQuery(api.medications.list);
+  // Usar medications proporcionadas si están disponibles, si no usar todas
+  const medications = availableMedications || allMedications || [];
   const [showAddForm, setShowAddForm] = useState(false);
   const [selectedMedicationId, setSelectedMedicationId] = useState<Id<"medications"> | "">("");
   const [quantity, setQuantity] = useState(1);

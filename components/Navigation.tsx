@@ -1,120 +1,57 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { useAuthActions } from "@convex-dev/auth/react";
-import { useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
+import { useUser, useClerk } from "@clerk/nextjs";
 import { 
   LayoutDashboard, 
   Calendar, 
-  Users, 
-  Pill, 
   LogOut,
   Stethoscope,
-  Shield,
-  Eye,
-  ArrowLeft
+  Shield
 } from "lucide-react";
+import { UserAvatar } from "@/components/UserAvatar";
 
 export function Navigation() {
   const pathname = usePathname();
   const router = useRouter();
   const { t } = useLanguage();
-  const { signOut } = useAuthActions();
-  const currentUser = useQuery(api.auth.currentUser);
-  const userProfile = useQuery(api.userProfiles.getCurrentProfile);
+  const { user, isLoaded } = useUser();
+  const { signOut } = useClerk();
   
-  // Determinar si es admin
-  const isAdmin = userProfile?.role === "admin";
+  const role = user?.publicMetadata?.role as string | undefined;
 
-  // Estado para el modo de vista del admin (admin o visitor)
-  const [adminViewMode, setAdminViewMode] = useState<"admin" | "visitor">("admin");
-
-  // Inicializar el modo de vista desde localStorage
-  useEffect(() => {
-    if (typeof window !== "undefined" && isAdmin) {
-      const savedMode = localStorage.getItem("adminViewMode") as "admin" | "visitor" | null;
-      if (savedMode) {
-        setAdminViewMode(savedMode);
-      } else {
-        // Por defecto, si es admin y está en una página de admin, modo admin
-        // Si está en una página de visitador, modo visitor
-        const isAdminPage = pathname.startsWith("/admin");
-        const defaultMode = isAdminPage ? "admin" : "visitor";
-        setAdminViewMode(defaultMode);
-        localStorage.setItem("adminViewMode", defaultMode);
-      }
-    }
-  }, [isAdmin, pathname]);
-
-  // Determinar si estamos en una página de admin
-  const isAdminPage = pathname.startsWith("/admin");
-
-  // Items de navegación base
-  const allNavItems = [
+  // Items de navegación estáticos - solo Dashboard y Visitas
+  const navItems = [
     { href: "/", label: t("nav.dashboard"), icon: LayoutDashboard },
     { href: "/visits", label: t("nav.visits"), icon: Calendar },
-    { href: "/doctors", label: t("nav.doctors"), icon: Users },
-    { href: "/medications", label: t("nav.medications"), icon: Pill },
   ];
 
-  // Lógica de navegación: si es admin en modo visitor, mostrar solo Dashboard y Visitas
-  // Si es admin en modo admin, mostrar todos los items
-  const navItems = isAdmin && adminViewMode === "visitor"
-    ? allNavItems.filter(item => item.href === "/" || item.href === "/visits")
-    : isAdmin
-    ? allNavItems
-    : allNavItems.filter(item => item.href === "/" || item.href === "/visits");
-  
-  // Si es admin en modo admin, agregar link al panel de admin
-  if (isAdmin && adminViewMode === "admin") {
-    navItems.push({ href: "/admin", label: "Admin", icon: Shield });
-  }
+  const isAdmin = role === "admin";
 
-  // Función para cambiar al modo visitador
-  const handleViewAsGuest = () => {
-    setAdminViewMode("visitor");
-    if (typeof window !== "undefined") {
-      localStorage.setItem("adminViewMode", "visitor");
-    }
-    router.push("/");
-  };
-
-  // Función para volver al modo admin
-  const handleReturnToAdmin = () => {
-    setAdminViewMode("admin");
-    if (typeof window !== "undefined") {
-      localStorage.setItem("adminViewMode", "admin");
-    }
-    router.push("/admin");
-  };
-
-  // Limpiar localStorage al cerrar sesión
+  // Función para cerrar sesión
   const handleSignOut = async () => {
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("adminViewMode");
-    }
     try {
       await signOut();
-      window.location.href = "/login";
+      router.push("/login");
     } catch (error) {
       // Si falla, simplemente redirigir
-      window.location.href = "/login";
+      router.push("/login");
     }
   };
 
   return (
-    <nav className="bg-gradient-to-r from-blue-600 to-blue-700 shadow-lg">
+    <nav className="bg-gradient-to-r from-blue-600 via-blue-600 to-blue-700 shadow-xl border-b border-blue-500/20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-16">
-          <div className="flex items-center gap-2">
-            <Stethoscope className="w-6 h-6 text-white" />
-            <span className="text-white font-bold text-lg">Medical Visitor</span>
+        <div className="flex justify-between items-center h-18">
+          <div className="flex items-center gap-3">
+            <div className="bg-white/10 backdrop-blur-sm p-2 rounded-2xl">
+              <Stethoscope className="w-6 h-6 text-white" />
+            </div>
+            <span className="text-white font-bold text-xl tracking-tight">Medical Visitor</span>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = pathname === item.href;
@@ -122,42 +59,54 @@ export function Navigation() {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                  className={`flex items-center gap-2.5 px-5 py-2.5 rounded-2xl transition-all duration-300 ${
                     isActive
-                      ? "bg-white/20 text-white"
-                      : "text-white/80 hover:bg-white/10 hover:text-white"
+                      ? "bg-white/20 backdrop-blur-sm text-white shadow-lg scale-105"
+                      : "text-white/90 hover:bg-white/10 hover:text-white hover:shadow-md active:scale-95"
                   }`}
                 >
                   <Icon className="w-4 h-4" />
-                  <span className="hidden sm:inline">{item.label}</span>
+                  <span className="hidden sm:inline font-medium">{item.label}</span>
                 </Link>
               );
             })}
-            {/* Botón "Mirar como Huésped" - Solo visible cuando admin está en modo admin y en páginas de admin */}
-            {isAdmin && adminViewMode === "admin" && isAdminPage && (
-              <button
-                onClick={handleViewAsGuest}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg text-white/80 hover:bg-white/10 hover:text-white transition-all duration-200 active:scale-95"
-                title="Mirar como Huésped"
+
+            {/* Botón "Volver al Admin" solo para admins */}
+            {isAdmin && (
+              <Link
+                href="/admin"
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/10 backdrop-blur-sm text-white font-medium hover:bg-white/20 hover:shadow-lg transition-all duration-300 active:scale-95 border border-white/20"
               >
-                <Eye className="w-4 h-4" />
-                <span className="hidden sm:inline">Mirar como Huésped</span>
-              </button>
-            )}
-            {/* Botón "Volver al Admin" - Solo visible cuando admin está en modo visitor */}
-            {isAdmin && adminViewMode === "visitor" && (
-              <button
-                onClick={handleReturnToAdmin}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg text-white/80 hover:bg-white/10 hover:text-white transition-all duration-200 active:scale-95"
-                title="Volver al Admin"
-              >
-                <ArrowLeft className="w-4 h-4" />
+                <Shield className="w-4 h-4" />
                 <span className="hidden sm:inline">Volver al Admin</span>
-              </button>
+              </Link>
             )}
+            
+            {/* Avatar del usuario */}
+            <div className="flex items-center">
+              {!isLoaded ? (
+                // Cargando
+                <div className="w-11 h-11 rounded-full bg-white/20 animate-pulse border-2 border-white/30"></div>
+              ) : user ? (
+                // Mostrar avatar con datos
+                <UserAvatar
+                  name={user.firstName || user.fullName || undefined}
+                  email={user.primaryEmailAddress?.emailAddress || undefined}
+                  role={(role === "admin" ? "admin" : "visitor") as "admin" | "visitor"}
+                  size="md"
+                  showTooltip={true}
+                />
+              ) : (
+                // Usuario no autenticado - mostrar avatar por defecto
+                <div className="w-11 h-11 rounded-full bg-white/10 border-2 border-white/20 flex items-center justify-center">
+                  <span className="text-white text-xs font-bold">?</span>
+                </div>
+              )}
+            </div>
+            
             <button
               onClick={handleSignOut}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-white/80 hover:bg-white/10 hover:text-white transition-all duration-200 active:scale-95"
+              className="flex items-center gap-2 px-5 py-2.5 rounded-2xl text-white/90 hover:bg-white/10 hover:text-white transition-all duration-300 active:scale-95 font-medium"
             >
               <LogOut className="w-4 h-4" />
               <span className="hidden sm:inline">{t("nav.signOut")}</span>
@@ -168,4 +117,3 @@ export function Navigation() {
     </nav>
   );
 }
-

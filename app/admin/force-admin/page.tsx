@@ -1,38 +1,21 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
-import { Navigation } from "@/components/Navigation";
 import { Shield, CheckCircle, XCircle, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 function ForceAdminContent() {
   const router = useRouter();
   const currentUser = useQuery(api.auth.currentUser);
-  const updateRole = useMutation(api.userProfiles.updateRole);
+  const userProfile = useQuery(api.userProfiles.getCurrentProfile);
+  const forceAdminRole = useMutation(api.userProfiles.forceAdminRole);
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
 
-  useEffect(() => {
-    // Intentar hacer admin automáticamente cuando se carga la página
-    if (currentUser && currentUser.profile?.role !== "admin") {
-      const adminEmail = "almontefrederick5@gmail.com";
-      const userEmail = (currentUser as any).email?.toLowerCase() || "";
-      
-      if (userEmail === adminEmail.toLowerCase() && currentUser._id) {
-        handleMakeAdmin();
-      }
-    } else if (currentUser && currentUser.profile?.role === "admin") {
-      // Ya es admin, redirigir
-      setTimeout(() => {
-        router.push("/admin");
-      }, 1000);
-    }
-  }, [currentUser]);
-
-  const handleMakeAdmin = async () => {
+  const handleMakeAdmin = useCallback(async () => {
     if (!currentUser || !currentUser._id) {
       setResult({ 
         success: false, 
@@ -56,14 +39,9 @@ function ForceAdminContent() {
     setResult(null);
     
     try {
-      // Usar updateRole para actualizar el rol
-      // Primero necesitamos crear el perfil si no existe
-      const createProfile = useMutation(api.userProfiles.create);
-      
-      // Intentar crear o actualizar el perfil
-      await updateRole({
+      // Usar forceAdminRole: solo permite auto-promoción si el email coincide con el allowlist.
+      await forceAdminRole({
         userId: currentUser._id,
-        role: "admin",
       });
       
       setResult({ success: true, message: "¡Ahora eres admin! Redirigiendo..." });
@@ -72,34 +50,40 @@ function ForceAdminContent() {
         router.push("/admin");
       }, 2000);
     } catch (error: any) {
-      // Si falla updateRole, intentar crear el perfil directamente
-      try {
-        // Esto requeriría una función que no requiere admin, pero podemos usar una alternativa
-        setResult({ 
-          success: false, 
-          message: "Error: " + (error.message || "No se pudo actualizar el rol. Por favor verifica que el servidor de Convex esté corriendo.") 
-        });
-      } catch (err: any) {
-        setResult({ 
-          success: false, 
-          message: "Error: " + (err.message || "No se pudo hacer admin. Verifica que npx convex dev esté corriendo.") 
-        });
-      }
+      // Si falla updateRole, mostrar error
+      setResult({ 
+        success: false, 
+        message: "Error: " + (error.message || "No se pudo actualizar el rol. Por favor verifica que el servidor de Convex esté corriendo.") 
+      });
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [currentUser, forceAdminRole, router]);
+
+  useEffect(() => {
+    // Intentar hacer admin automáticamente cuando se carga la página
+    if (currentUser && userProfile?.role !== "admin") {
+      const adminEmail = "almontefrederick5@gmail.com";
+      const userEmail = (currentUser as any).email?.toLowerCase() || "";
+      
+      if (userEmail === adminEmail.toLowerCase() && currentUser._id) {
+        handleMakeAdmin();
+      }
+    } else if (currentUser && userProfile?.role === "admin") {
+      // Ya es admin, redirigir
+      setTimeout(() => {
+        router.push("/admin");
+      }, 1000);
+    }
+  }, [currentUser, userProfile, router, handleMakeAdmin]);
 
   if (currentUser === undefined) {
     return (
       <ProtectedRoute>
-        <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50">
-          <Navigation />
-          <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm border border-gray-100 p-6 sm:p-8 text-center">
-              <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-4" />
-              <p className="text-gray-600">Cargando...</p>
-            </div>
+        <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm border border-gray-100 p-6 sm:p-8 text-center">
+            <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-4" />
+            <p className="text-gray-600">Cargando...</p>
           </div>
         </div>
       </ProtectedRoute>
@@ -108,9 +92,7 @@ function ForceAdminContent() {
 
   return (
     <ProtectedRoute>
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50">
-        <Navigation />
-        <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm border border-gray-100 p-6 sm:p-8">
             <div className="text-center mb-6">
               <Shield className="w-16 h-16 text-blue-600 mx-auto mb-4" />
@@ -152,7 +134,7 @@ function ForceAdminContent() {
 
             <button
               onClick={handleMakeAdmin}
-              disabled={isLoading || currentUser?.profile?.role === "admin"}
+              disabled={isLoading || userProfile?.role === "admin"}
               className="w-full bg-blue-600 text-white py-3 px-6 rounded-xl font-semibold hover:bg-blue-700 transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {isLoading ? (
@@ -160,7 +142,7 @@ function ForceAdminContent() {
                   <Loader2 className="w-5 h-5 animate-spin" />
                   <span>Procesando...</span>
                 </>
-              ) : currentUser?.profile?.role === "admin" ? (
+              ) : userProfile?.role === "admin" ? (
                 <>
                   <CheckCircle className="w-5 h-5" />
                   <span>Ya eres admin</span>
@@ -189,4 +171,3 @@ function ForceAdminContent() {
 export default function ForceAdminPage() {
   return <ForceAdminContent />;
 }
-

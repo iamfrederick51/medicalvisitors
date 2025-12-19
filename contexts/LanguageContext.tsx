@@ -13,13 +13,31 @@ interface LanguageContextType {
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
-  const [language, setLanguageState] = useState<Language>("es");
+  // Inicializar el estado con el valor del localStorage si está disponible
+  // Esto evita tener que actualizar el estado después del primer render
+  const getInitialLanguage = (): Language => {
+    if (typeof window !== "undefined") {
+      const savedLanguage = localStorage.getItem("language") as Language;
+      if (savedLanguage && (savedLanguage === "es" || savedLanguage === "en")) {
+        return savedLanguage;
+      }
+    }
+    return "es";
+  };
+
+  const [language, setLanguageState] = useState<Language>(getInitialLanguage);
   const [translations, setTranslations] = useState<Record<string, any>>({});
 
   useEffect(() => {
     const loadTranslations = async () => {
-      const translations = await import(`../locales/${language}.json`);
-      setTranslations(translations.default);
+      try {
+        const translations = await import(`../locales/${language}.json`);
+        setTranslations(translations.default);
+      } catch (error) {
+        console.error("Error loading translations:", error);
+        // Mantener traducciones vacías si hay error
+        setTranslations({});
+      }
     };
     loadTranslations();
   }, [language]);
@@ -30,15 +48,6 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem("language", lang);
     }
   };
-
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      const savedLanguage = localStorage.getItem("language") as Language;
-      if (savedLanguage && (savedLanguage === "es" || savedLanguage === "en")) {
-        setLanguageState(savedLanguage);
-      }
-    }
-  }, []);
 
   const t = (key: string): string => {
     const keys = key.split(".");

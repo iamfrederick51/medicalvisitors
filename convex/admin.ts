@@ -1,23 +1,14 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
-import { getAuthUserId } from "@convex-dev/auth/server";
+import { getClerkUserId, getUserRole } from "./auth";
 import { internal } from "./_generated/api";
 
 // Verificar si el usuario actual es admin
 export const isAdmin = query({
   args: {},
   handler: async (ctx) => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) {
-      return false;
-    }
-    
-    const profile = await ctx.db
-      .query("userProfiles")
-      .withIndex("by_userId", (q) => q.eq("userId", userId))
-      .first();
-    
-    return profile?.role === "admin";
+    const role = await getUserRole(ctx);
+    return role === "admin";
   },
 });
 
@@ -31,22 +22,9 @@ export const createUser = mutation({
   },
   handler: async (ctx, args) => {
     // Sin restricción de admin - permitir a todos crear usuarios
-    const userId = await getAuthUserId(ctx);
-    if (!userId) {
-      // Si no hay usuario autenticado, obtener el primero disponible
-      const firstUser = await ctx.db.query("users").first();
-      if (firstUser) {
-        // Registrar actividad con el primer usuario disponible
-        await ctx.db.insert("activityLogs", {
-          userId: firstUser._id,
-          action: "create_user",
-          entityType: "user",
-          details: `Created user: ${args.email}`,
-          createdAt: Date.now(),
-        });
-      }
-    } else {
-      // Registrar actividad
+    const userId = await getClerkUserId(ctx);
+    if (userId) {
+      // Registrar actividad si hay usuario autenticado
       await ctx.db.insert("activityLogs", {
         userId,
         action: "create_user",
@@ -79,7 +57,7 @@ export const getAllVisits = query({
       const batchResults = await Promise.all(
         batch.map(async (visit) => {
           const doctor = await ctx.db.get(visit.doctorId);
-          const visitor = await ctx.db.get(visit.visitorId);
+          // visitorId es un Clerk user ID (string), obtener el perfil
           const visitorProfile = await ctx.db
             .query("userProfiles")
             .withIndex("by_userId", (q) => q.eq("userId", visit.visitorId))
@@ -99,7 +77,7 @@ export const getAllVisits = query({
             ...visit,
             doctor,
             visitor: {
-              ...visitor,
+              id: visit.visitorId,
               profile: visitorProfile,
             },
             medications,
@@ -138,6 +116,124 @@ export const getStats = query({
         cancelled: visits.filter((v) => v.status === "cancelled").length,
       },
     };
+  },
+});
+
+// Obtener todos los doctores (para admin)
+// Optimizado para evitar timeouts procesando en lotes
+export const getAllDoctors = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getClerkUserId(ctx);
+    if (!userId) {
+      return [];
+    }
+    
+    // Verificar si es admin
+    const role = await getUserRole(ctx);
+    if (role !== "admin") {
+      throw new Error("Only admins can access all doctors");
+    }
+    
+    // Retornar todos los doctores con sus centros médicos
+    // Usar take con límite para evitar timeouts
+    const doctors = await ctx.db.query("doctors").take(1000);
+    
+    // Enriquecer con información de centros médicos en lotes para evitar timeout
+    const batchSize = 20;
+    const enrichedDoctors = [];
+    
+    for (let i = 0; i < doctors.length; i += batchSize) {
+      const batch = doctors.slice(i, i + batchSize);
+      const batchResults = await Promise.all(
+        batch.map(async (doctor) => {
+          const centers = await Promise.all(
+            doctor.medicalCenters.map((centerId) => ctx.db.get(centerId))
+          );
+          return {
+            ...doctor,
+            medicalCentersData: centers.filter(Boolean),
+          };
+        })
+      );
+      enrichedDoctors.push(...batchResults);
+    }
+    
+    return enrichedDoctors;
+  },
+});
+
+// Obtener todos los medicamentos (para admin)
+// Optimizado para evitar timeouts
+export const getAllMedications = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getClerkUserId(ctx);
+    if (!userId) {
+      return [];
+    }
+    
+    // Verificar si es admin
+    const role = await getUserRole(ctx);
+    if (role !== "admin") {
+      throw new Error("Only admins can access all medications");
+    }
+    
+    // Retornar todos los medicamentos (usar take con límite razonable)
+    return await ctx.db.query("medications").take(1000);
+  },
+});
+
+// Obtener todos los centros médicos (para admin)
+// Optimizado para evitar timeouts
+export const getAllMedicalCenters = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getClerkUserId(ctx);
+    if (!userId) {
+      return [];
+    }
+    
+    // Verificar si es admin
+    const role = await getUserRole(ctx);
+    if (role !== "admin") {
+      throw new Error("Only admins can access all medical centers");
+    }
+    
+    // Retornar todos los centros médicos con doctores y visitadores asociados
+    const centers = await ctx.db.query("medicalCenters").take(1000);
+    
+    // Enriquecer con información de doctores y visitadores asignados
+    const batchSize = 20;
+    const enrichedCenters = [];
+    
+    for (let i = 0; i < centers.length; i += batchSize) {
+      const batch = centers.slice(i, i + batchSize);
+      const batchResults = await Promise.all(
+        batch.map(async (center) => {
+          // Obtener doctores que trabajan en este centro
+          const allDoctors = await ctx.db.query("doctors").take(1000);
+          const doctorsAtCenter = allDoctors.filter(doc => 
+            doc.medicalCenters.includes(center._id)
+          );
+          
+          // Obtener visitadores asignados a este centro
+          const allProfiles = await ctx.db.query("userProfiles").take(1000);
+          const visitorsAtCenter = allProfiles.filter(profile =>
+            profile.assignedMedicalCenters?.includes(center._id)
+          );
+          
+          return {
+            ...center,
+            doctors: doctorsAtCenter,
+            assignedVisitors: visitorsAtCenter.length,
+          };
+        })
+      );
+      enrichedCenters.push(...batchResults);
+    }
+    
+    return enrichedCenters;
   },
 });
 

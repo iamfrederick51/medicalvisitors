@@ -1,21 +1,25 @@
 "use client";
 
+import React from "react";
 import { useState, useEffect } from "react";
 import { Id } from "@/convex/_generated/dataModel";
-import { User, Stethoscope, Pill, Trash2 } from "lucide-react";
+import { User, Stethoscope, Pill, Trash2, Building2 } from "lucide-react";
 
 interface VisitorItemProps {
   visitor: any;
   isEditing: boolean;
   initialDoctors: Id<"doctors">[];
   initialMedications: Id<"medications">[];
+  initialMedicalCenters: Id<"medicalCenters">[];
   doctors: any[];
   medications: any[];
+  medicalCenters: any[];
   onEdit: () => void;
-  onSave: (userId: Id<"users">, doctors: Id<"doctors">[], medications: Id<"medications">[]) => void;
+  onSave: (userId: Id<"users">, doctors: Id<"doctors">[], medications: Id<"medications">[], medicalCenters: Id<"medicalCenters">[]) => void;
   onDelete: (userId: Id<"users">) => void;
   toggleDoctor: (id: Id<"doctors">, list: Id<"doctors">[]) => Id<"doctors">[];
   toggleMedication: (id: Id<"medications">, list: Id<"medications">[]) => Id<"medications">[];
+  toggleMedicalCenter: (id: Id<"medicalCenters">, list: Id<"medicalCenters">[]) => Id<"medicalCenters">[];
 }
 
 export function VisitorItem({
@@ -23,24 +27,29 @@ export function VisitorItem({
   isEditing,
   initialDoctors,
   initialMedications,
+  initialMedicalCenters,
   doctors,
   medications,
+  medicalCenters,
   onEdit,
   onSave,
   onDelete,
   toggleDoctor,
   toggleMedication,
+  toggleMedicalCenter,
 }: VisitorItemProps) {
   const [editDoctors, setEditDoctors] = useState<Id<"doctors">[]>(initialDoctors);
   const [editMedications, setEditMedications] = useState<Id<"medications">[]>(initialMedications);
+  const [editMedicalCenters, setEditMedicalCenters] = useState<Id<"medicalCenters">[]>(initialMedicalCenters);
 
   // Actualizar estados cuando cambia isEditing
   useEffect(() => {
     if (isEditing) {
       setEditDoctors(initialDoctors);
       setEditMedications(initialMedications);
+      setEditMedicalCenters(initialMedicalCenters);
     }
-  }, [isEditing, initialDoctors, initialMedications]);
+  }, [isEditing, initialDoctors, initialMedications, initialMedicalCenters]);
 
   return (
     <div className="border border-gray-200 rounded-xl p-4 hover:shadow-md transition-all">
@@ -122,15 +131,41 @@ export function VisitorItem({
             </div>
           </div>
 
+          {/* Editar centros médicos */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Centros Médicos Asignados
+            </label>
+            <div className="border border-gray-200 rounded-lg p-3 max-h-40 overflow-y-auto">
+              {medicalCenters.map((center) => (
+                <label
+                  key={center._id}
+                  className="flex items-center gap-2 p-2 hover:bg-gray-50 rounded cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    checked={editMedicalCenters.includes(center._id)}
+                    onChange={() => setEditMedicalCenters(toggleMedicalCenter(center._id, editMedicalCenters))}
+                    className="w-4 h-4 text-blue-600 rounded"
+                  />
+                  <div>
+                    <span className="text-sm block">{center.name}</span>
+                    <span className="text-xs text-gray-500">{center.city}</span>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+
           <button
-            onClick={() => onSave(visitor.userId, editDoctors, editMedications)}
+            onClick={() => onSave(visitor.userId, editDoctors, editMedications, editMedicalCenters)}
             className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium"
           >
             Guardar Cambios
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
           {/* Doctores asignados */}
           <div>
             <div className="flex items-center gap-2 mb-2">
@@ -165,6 +200,25 @@ export function VisitorItem({
                 ))
               ) : (
                 <span className="text-sm text-gray-400 pl-6">Ningún medicamento asignado</span>
+              )}
+            </div>
+          </div>
+
+          {/* Centros médicos asignados */}
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <Building2 className="w-4 h-4 text-blue-600" />
+              <span className="text-sm font-medium text-gray-700">Centros Médicos ({visitor.assignedMedicalCenters?.length || 0})</span>
+            </div>
+            <div className="space-y-1">
+              {visitor.assignedMedicalCenters && visitor.assignedMedicalCenters.length > 0 ? (
+                visitor.assignedMedicalCenters.map((center: any) => (
+                  <div key={center._id} className="text-sm text-gray-600 pl-6">
+                    • {center.name} ({center.city})
+                  </div>
+                ))
+              ) : (
+                <span className="text-sm text-gray-400 pl-6">Ningún centro asignado</span>
               )}
             </div>
           </div>

@@ -9,7 +9,7 @@ npx convex dev
 ```
 
 **Verifica que:**
-- El servidor de Convex esté corriendo en el puerto 6790
+- El API de Convex esté corriendo en el puerto 3210 (el dashboard local es 6790)
 - No haya errores en la terminal
 - Veas mensajes como "Convex functions are ready" o similar
 
@@ -21,7 +21,7 @@ cat .env.local
 
 **Debe contener:**
 ```
-NEXT_PUBLIC_CONVEX_URL=http://127.0.0.1:6790
+NEXT_PUBLIC_CONVEX_URL=http://127.0.0.1:3210
 ```
 
 ### 3. **Archivo `convex.json` debe existir**
@@ -57,7 +57,7 @@ Si estás usando Convex en producción (no local), necesitas configurar:
    - Busca errores en la pestaña "Network"
 
 2. **Verifica que Convex esté respondiendo:**
-   - En la consola del navegador, busca llamadas a `http://127.0.0.1:6790`
+   - En la consola del navegador, busca llamadas a `http://127.0.0.1:3210`
    - Deben responder con código 200 (éxito)
 
 3. **Verifica los logs de Convex:**
@@ -68,7 +68,7 @@ Si estás usando Convex en producción (no local), necesitas configurar:
 
 #### Error: "Cannot connect to Convex"
 - **Solución:** Asegúrate de que `npx convex dev` esté corriendo
-- Verifica que el puerto 6790 no esté bloqueado
+- Verifica que el puerto 3210 no esté bloqueado (6790 es el dashboard)
 
 #### Error: "NEXT_PUBLIC_CONVEX_URL is not defined"
 - **Solución:** Verifica que `.env.local` existe y tiene la variable correcta

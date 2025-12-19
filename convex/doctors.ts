@@ -1,25 +1,50 @@
 import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
-import { getAuthUserId } from "@convex-dev/auth/server";
+import { getClerkUserId, getUserRole } from "./auth";
 
 export const list = query({
-  args: {},
-  handler: async (ctx) => {
-    const userId = await getAuthUserId(ctx);
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const userId = await getClerkUserId(ctx);
     if (!userId) {
       return [];
     }
-    return await ctx.db
-      .query("doctors")
-      .withIndex("by_createdBy", (q) => q.eq("createdBy", userId))
-      .collect();
+    
+    // Obtener el rol del usuario desde Clerk publicMetadata
+    const role = await getUserRole(ctx);
+    
+    // Si es admin, mostrar todos los doctores
+    if (role === "admin") {
+      const limit = Math.min(args.limit ?? 1000, 5000);
+      return await ctx.db.query("doctors").take(limit);
+    }
+    
+    // Si es visitador, obtener perfil para ver asignaciones
+    if (role === "visitor") {
+      const profile = await ctx.db
+        .query("userProfiles")
+        .withIndex("by_userId", (q) => q.eq("userId", userId))
+        .first();
+      
+      if (profile?.assignedDoctors && profile.assignedDoctors.length > 0) {
+        const assignedDoctors = await Promise.all(
+          profile.assignedDoctors.map(async (doctorId) => {
+            return await ctx.db.get(doctorId);
+          })
+        );
+        return assignedDoctors.filter((d): d is NonNullable<typeof d> => d !== null);
+      }
+    }
+    
+    // Si no hay asignaciones o no es visitador, retornar array vacío
+    return [];
   },
 });
 
 export const get = query({
   args: { id: v.id("doctors") },
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx);
+    const userId = await getClerkUserId(ctx);
     if (!userId) {
       return null;
     }
@@ -34,7 +59,7 @@ export const get = query({
 export const getWithCenters = query({
   args: { id: v.id("doctors") },
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx);
+    const userId = await getClerkUserId(ctx);
     if (!userId) {
       return null;
     }
@@ -61,10 +86,17 @@ export const create = mutation({
     medicalCenterIds: v.array(v.id("medicalCenters")),
   },
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx);
+    const userId = await getClerkUserId(ctx);
     if (!userId) {
       throw new Error("Not authenticated");
     }
+    
+    // Validar que el usuario sea admin
+    const role = await getUserRole(ctx);
+    if (role !== "admin") {
+      throw new Error("Only admins can create doctors");
+    }
+    
     if (args.medicalCenterIds.length > 2) {
       throw new Error("A doctor can only be associated with up to 2 medical centers");
     }
@@ -90,7 +122,7 @@ export const update = mutation({
     medicalCenterIds: v.optional(v.array(v.id("medicalCenters"))),
   },
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx);
+    const userId = await getClerkUserId(ctx);
     if (!userId) {
       throw new Error("Not authenticated");
     }
@@ -110,6 +142,33 @@ export const update = mutation({
       updates.medicalCenters = args.medicalCenterIds;
     }
     await ctx.db.patch(args.id, updates);
+  },
+});
+
+export const deleteDoctor = mutation({
+  args: {
+    id: v.id("doctors"),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getClerkUserId(ctx);
+    if (!userId) {
+      throw new Error("Not authenticated");
+    }
+    
+    // Verificar si es admin
+    const role = await getUserRole(ctx);
+    
+    const doctor = await ctx.db.get(args.id);
+    if (!doctor) {
+      throw new Error("Doctor not found");
+    }
+    
+    // Solo el creador o un admin puede eliminar
+    if (doctor.createdBy !== userId && role !== "admin") {
+      throw new Error("Not authorized to delete this doctor");
+    }
+    
+    await ctx.db.delete(args.id);
   },
 });
 

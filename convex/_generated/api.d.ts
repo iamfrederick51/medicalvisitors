@@ -12,7 +12,6 @@ import type * as activityLogs from "../activityLogs.js";
 import type * as admin from "../admin.js";
 import type * as auth from "../auth.js";
 import type * as doctors from "../doctors.js";
-import type * as makeMeAdmin from "../makeMeAdmin.js";
 import type * as medicalCenters from "../medicalCenters.js";
 import type * as medications from "../medications.js";
 import type * as setupAdmin from "../setupAdmin.js";
@@ -31,7 +30,6 @@ declare const fullApi: ApiFromModules<{
   admin: typeof admin;
   auth: typeof auth;
   doctors: typeof doctors;
-  makeMeAdmin: typeof makeMeAdmin;
   medicalCenters: typeof medicalCenters;
   medications: typeof medications;
   setupAdmin: typeof setupAdmin;

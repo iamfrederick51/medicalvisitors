@@ -4,12 +4,12 @@ import { useState, useEffect } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
-import { Navigation } from "@/components/Navigation";
 import { Shield, CheckCircle, XCircle, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 function MakeAdminContent() {
   const currentUser = useQuery(api.auth.currentUser);
+  const userProfile = useQuery(api.userProfiles.getCurrentProfile);
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
   const router = useRouter();
@@ -20,13 +20,13 @@ function MakeAdminContent() {
 
   // Verificar automáticamente si ya es admin
   useEffect(() => {
-    if (currentUser?.profile?.role === "admin") {
+    if (userProfile?.role === "admin") {
       setResult({ success: true, message: "Ya eres admin! Redirigiendo..." });
       setTimeout(() => {
         router.push("/admin");
       }, 1500);
     }
-  }, [currentUser, router]);
+  }, [userProfile, router]);
 
   const handleMakeAdmin = async () => {
     if (!currentUser || !currentUser._id) {
@@ -80,9 +80,7 @@ function MakeAdminContent() {
 
   return (
     <ProtectedRoute>
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50">
-        <Navigation />
-        <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm border border-gray-100 p-6 sm:p-8">
             <div className="text-center mb-6">
               <Shield className="w-16 h-16 text-blue-600 mx-auto mb-4" />
@@ -115,12 +113,12 @@ function MakeAdminContent() {
               </div>
             )}
 
-            {currentUser === undefined ? (
+            {currentUser === undefined || userProfile === undefined ? (
               <div className="text-center py-4">
                 <Loader2 className="w-6 h-6 animate-spin text-blue-600 mx-auto mb-2" />
                 <p className="text-gray-600 text-sm">Cargando información del usuario...</p>
               </div>
-            ) : currentUser?.profile?.role === "admin" ? (
+            ) : userProfile?.role === "admin" ? (
               <div className="w-full bg-green-50 border border-green-200 text-green-800 py-3 px-6 rounded-xl font-semibold text-center">
                 <CheckCircle className="w-5 h-5 inline mr-2" />
                 Ya eres admin

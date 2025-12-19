@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { useState, useEffect } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -19,11 +20,29 @@ function NewVisitContent() {
   const { t } = useLanguage();
   const router = useRouter();
   const createVisit = useMutation(api.visits.create);
+  const currentAssignments = useQuery(api.userProfiles.getCurrentAssignments);
+  const allDoctors = useQuery(api.doctors.list);
+  const allMedications = useQuery(api.medications.list);
+  const allMedicalCenters = useQuery(api.medicalCenters.list);
+
+  // Filtrar doctores, medicamentos y centros médicos según asignaciones del visitador
+  const doctors = currentAssignments?.assignedDoctors 
+    ? allDoctors?.filter(d => currentAssignments.assignedDoctors.some(ad => ad._id === d._id)) || []
+    : allDoctors || [];
+  
+  const medications = currentAssignments?.assignedMedications
+    ? allMedications?.filter(m => currentAssignments.assignedMedications.some(am => am._id === m._id)) || []
+    : allMedications || [];
+  
+  const medicalCenters = currentAssignments?.assignedMedicalCenters
+    ? allMedicalCenters?.filter(mc => currentAssignments.assignedMedicalCenters.some(amc => amc._id === mc._id)) || []
+    : allMedicalCenters || [];
   
   const [doctorId, setDoctorId] = useState<Id<"doctors"> | undefined>();
   const [selectedDoctor, setSelectedDoctor] = useState<any>(null);
+  const [selectedMedicalCenterId, setSelectedMedicalCenterId] = useState<Id<"medicalCenters"> | "">("");
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
-  const [medications, setMedications] = useState<
+  const [selectedMedications, setSelectedMedications] = useState<
     Array<{ medicationId: Id<"medications">; quantity: number; notes?: string }>
   >([]);
   const [notes, setNotes] = useState("");
@@ -33,11 +52,19 @@ function NewVisitContent() {
 
   const handleDoctorSelect = (doctor: any) => {
     setSelectedDoctor(doctor);
+    setSelectedMedicalCenterId(""); // Resetear centro médico al cambiar doctor
   };
+
+  // Obtener centros médicos disponibles (ya filtrados por asignaciones, pero también del doctor seleccionado si aplica)
+  const availableCenters = selectedDoctor?.medicalCenters 
+    ? medicalCenters.filter(center => 
+        selectedDoctor.medicalCenters.includes(center._id)
+      )
+    : medicalCenters;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!doctorId || medications.length === 0) {
+    if (!doctorId || selectedMedications.length === 0) {
       alert("Por favor selecciona un doctor y al menos un medicamento");
       return;
     }
@@ -47,7 +74,8 @@ function NewVisitContent() {
       await createVisit({
         doctorId,
         date: new Date(date).getTime(),
-        medications,
+        medicalCenterId: selectedMedicalCenterId || undefined,
+        medications: selectedMedications,
         notes: notes || undefined,
         status,
       });
@@ -87,8 +115,24 @@ function NewVisitContent() {
               onDoctorSelect={handleDoctorSelect}
             />
 
-            {selectedDoctor && selectedDoctor.medicalCenters && (
-              <MedicalCenterDisplay centerIds={selectedDoctor.medicalCenters} />
+            {selectedDoctor && availableCenters.length > 0 && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Centro Médico
+                </label>
+                <select
+                  value={selectedMedicalCenterId}
+                  onChange={(e) => setSelectedMedicalCenterId(e.target.value as Id<"medicalCenters">)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">Seleccionar centro médico</option>
+                  {availableCenters.map((center) => (
+                    <option key={center._id} value={center._id}>
+                      {center.name} - {center.city}
+                    </option>
+                  ))}
+                </select>
+              </div>
             )}
 
             <div>
@@ -121,11 +165,11 @@ function NewVisitContent() {
               </select>
             </div>
 
-            <MedicationInput value={medications} onChange={setMedications} />
+            <MedicationInput value={selectedMedications} onChange={setSelectedMedications} availableMedications={medications} />
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                {t("visits.notes")}
+                {t("visits.notes")} (Opcional)
               </label>
               <textarea
                 value={notes}

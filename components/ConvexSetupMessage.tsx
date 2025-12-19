@@ -1,33 +1,53 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { AlertCircle } from "lucide-react";
 
+/**
+ * Verifica si la URL de Convex es válida
+ * Esta función se ejecuta a nivel de módulo para evitar problemas con hooks
+ */
+function isValidConvexUrl(url: string | undefined): boolean {
+  if (!url || typeof url !== "string") {
+    return false;
+  }
+  
+  const trimmedUrl = url.trim();
+  
+  // Debe ser una cadena no vacía
+  if (trimmedUrl === "") {
+    return false;
+  }
+  
+  // No debe contener placeholders
+  if (trimmedUrl.includes("placeholder")) {
+    return false;
+  }
+  
+  // Debe empezar con http:// o https://
+  if (!trimmedUrl.startsWith("http://") && !trimmedUrl.startsWith("https://")) {
+    return false;
+  }
+  
+  return true;
+}
+
+// Verificar la URL de Convex a nivel de módulo (se ejecuta una vez al cargar el módulo)
+// Las variables NEXT_PUBLIC_* están disponibles en tiempo de compilación en Next.js
+// y son reemplazadas en el código del cliente
+const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
+const hasValidConvexUrl = isValidConvexUrl(convexUrl);
+
 export function ConvexSetupMessage() {
-  const [showMessage, setShowMessage] = useState(false);
+  // Siempre llamar useState con el mismo valor inicial para mantener consistencia
+  // El valor se calcula a nivel de módulo, no dentro del componente
+  const [showMessage, setShowMessage] = useState(!hasValidConvexUrl);
 
-  useEffect(() => {
-    // Verificar si Convex está configurado
-    // Las variables NEXT_PUBLIC_* están disponibles en tiempo de compilación en Next.js
-    if (typeof window !== "undefined") {
-      const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
-      
-      // Verificar si la URL es válida (no vacía y no es un placeholder)
-      const hasValidUrl = convexUrl && 
-                          convexUrl.trim() !== "" && 
-                          !convexUrl.includes("placeholder") &&
-                          (convexUrl.startsWith("http://") || convexUrl.startsWith("https://"));
-      
-      // Solo mostrar el mensaje si NO hay una URL válida
-      if (!hasValidUrl) {
-        setShowMessage(true);
-      } else {
-        setShowMessage(false);
-      }
-    }
-  }, []);
-
-  if (!showMessage) return null;
+  // IMPORTANTE: Siempre renderizar algo, incluso si es null
+  // Esto asegura que los hooks se llamen siempre en el mismo orden
+  if (!showMessage) {
+    return null;
+  }
 
   return (
     <div className="fixed top-0 left-0 right-0 bg-yellow-50 border-b border-yellow-200 z-50">
@@ -39,7 +59,8 @@ export function ConvexSetupMessage() {
               <strong>Configuración requerida:</strong> Necesitas configurar Convex para usar esta aplicación.
             </p>
             <p className="text-xs text-yellow-700 mt-1">
-              Ejecuta <code className="bg-yellow-100 px-1 rounded">npx convex dev</code> en tu terminal para configurar Convex.
+              1. Ejecuta <code className="bg-yellow-100 px-1 rounded">npx convex dev</code> en tu terminal<br/>
+              2. Reinicia el servidor de Next.js (<code className="bg-yellow-100 px-1 rounded">npm run dev</code>) para que lea las variables de entorno
             </p>
           </div>
           <button

@@ -1,28 +1,37 @@
 "use client";
 
-import { ReactNode } from "react";
-import { useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
+import { ReactNode, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useUser } from "@clerk/nextjs";
 
 export function VisitorOnlyRoute({ children }: { children: ReactNode }) {
   const router = useRouter();
-  const userProfile = useQuery(api.userProfiles.getCurrentProfile);
+  const { isLoaded, user } = useUser();
 
   useEffect(() => {
-    if (userProfile !== undefined && userProfile?.role === "visitor") {
+    if (!isLoaded) return;
+
+    const role = user?.publicMetadata?.role as string | undefined;
+    if (role === "visitor" || !role) {
       // Los visitadores no pueden acceder a estas páginas, redirigir al dashboard
       router.replace("/");
     }
-  }, [userProfile, router]);
+  }, [user, isLoaded, router]);
 
-  // Si es visitador, no mostrar nada (se está redirigiendo)
-  if (userProfile?.role === "visitor") {
+  if (!isLoaded) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 via-white to-gray-50">
+        <div className="text-gray-600">Cargando...</div>
+      </div>
+    );
+  }
+
+  const role = user?.publicMetadata?.role as string | undefined;
+  // Si es visitador o no tiene rol, no mostrar nada (se está redirigiendo)
+  if (role === "visitor" || !role) {
     return null;
   }
 
-  // Si es admin o undefined (cargando), mostrar contenido
+  // Si es admin, mostrar contenido
   return <>{children}</>;
 }
-

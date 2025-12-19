@@ -1,17 +1,14 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
-import { authTables } from "@convex-dev/auth/server";
 
 export default defineSchema({
-  ...authTables,
-
   doctors: defineTable({
     name: v.string(),
     specialty: v.optional(v.string()),
     email: v.optional(v.string()),
     phone: v.optional(v.string()),
     medicalCenters: v.array(v.id("medicalCenters")),
-    createdBy: v.id("users"),
+    createdBy: v.string(), // Clerk user ID
     createdAt: v.number(),
   })
     .index("by_createdBy", ["createdBy"])
@@ -22,7 +19,7 @@ export default defineSchema({
     address: v.string(),
     city: v.string(),
     phone: v.optional(v.string()),
-    createdBy: v.id("users"),
+    createdBy: v.string(), // Clerk user ID
     createdAt: v.number(),
   })
     .index("by_createdBy", ["createdBy"])
@@ -30,8 +27,9 @@ export default defineSchema({
 
   visits: defineTable({
     doctorId: v.id("doctors"),
-    visitorId: v.id("users"),
+    visitorId: v.string(), // Clerk user ID
     date: v.number(),
+    medicalCenterId: v.optional(v.id("medicalCenters")),
     medications: v.array(
       v.object({
         medicationId: v.id("medications"),
@@ -59,24 +57,25 @@ export default defineSchema({
       v.literal("boxes"),
       v.literal("samples")
     ),
-    createdBy: v.id("users"),
+    createdBy: v.string(), // Clerk user ID
     createdAt: v.number(),
   })
     .index("by_createdBy", ["createdBy"])
     .index("by_name", ["name"]),
 
   userProfiles: defineTable({
-    userId: v.id("users"),
+    userId: v.string(), // Clerk user ID
     role: v.union(v.literal("admin"), v.literal("visitor")),
     name: v.optional(v.string()),
     assignedDoctors: v.optional(v.array(v.id("doctors"))),
     assignedMedications: v.optional(v.array(v.id("medications"))),
+    assignedMedicalCenters: v.optional(v.array(v.id("medicalCenters"))),
     createdAt: v.number(),
   })
     .index("by_userId", ["userId"]),
 
   activityLogs: defineTable({
-    userId: v.id("users"),
+    userId: v.string(), // Clerk user ID
     action: v.string(),
     entityType: v.string(),
     entityId: v.optional(v.string()),

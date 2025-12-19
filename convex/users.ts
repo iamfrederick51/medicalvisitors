@@ -1,42 +1,45 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
-import { getAuthUserId } from "@convex-dev/auth/server";
+import { getClerkUserId } from "./auth";
 import { Id } from "./_generated/dataModel";
-import { auth } from "./auth";
 
 // Obtener todos los usuarios (visitadores)
 // Versión optimizada para evitar timeouts
 export const list = query({
   args: {},
   handler: async (ctx) => {
-    // Obtener todos los perfiles de visitadores (limitado a 100 para evitar timeouts)
+    // Usar take en lugar de collect para mejor rendimiento (limitado a 100 para evitar timeouts)
     const profiles = await ctx.db
       .query("userProfiles")
-      .collect();
+      .take(100);
     
     // Si no hay perfiles, retornar array vacío
     if (profiles.length === 0) {
       return [];
     }
     
-    // Limitar el número de perfiles procesados para evitar timeouts
-    const limitedProfiles = profiles.slice(0, 100);
+    // Ya están limitados por take
+    const limitedProfiles = profiles;
     
-    // Obtener todos los IDs únicos de doctores y medicamentos
+    // Obtener todos los IDs únicos de doctores, medicamentos y centros médicos
     const allDoctorIds = new Set<Id<"doctors">>();
     const allMedicationIds = new Set<Id<"medications">>();
+    const allMedicalCenterIds = new Set<Id<"medicalCenters">>();
     
     limitedProfiles.forEach(profile => {
       profile.assignedDoctors?.forEach(id => allDoctorIds.add(id));
       profile.assignedMedications?.forEach(id => allMedicationIds.add(id));
+      profile.assignedMedicalCenters?.forEach(id => allMedicalCenterIds.add(id));
     });
     
-    // Hacer batch queries para doctores y medicamentos (limitado a 50 cada uno)
+    // Hacer batch queries para doctores, medicamentos y centros médicos (limitado a 50 cada uno)
     const doctorsMap = new Map();
     const medicationsMap = new Map();
+    const medicalCentersMap = new Map();
     
     const doctorIdsArray = Array.from(allDoctorIds).slice(0, 50);
     const medicationIdsArray = Array.from(allMedicationIds).slice(0, 50);
+    const medicalCenterIdsArray = Array.from(allMedicalCenterIds).slice(0, 50);
     
     // Procesar en lotes más pequeños para evitar timeouts
     const batchSize = 10;
@@ -60,13 +63,24 @@ export const list = query({
       );
     }
     
+    for (let i = 0; i < medicalCenterIdsArray.length; i += batchSize) {
+      const batch = medicalCenterIdsArray.slice(i, i + batchSize);
+      await Promise.all(
+        batch.map(async (id) => {
+          const medicalCenter = await ctx.db.get(id);
+          if (medicalCenter) medicalCentersMap.set(id, medicalCenter);
+        })
+      );
+    }
+    
     // Enriquecer con información del usuario (procesar en lotes)
     const usersWithDetails = [];
     for (let i = 0; i < limitedProfiles.length; i += batchSize) {
       const batch = limitedProfiles.slice(i, i + batchSize);
       const batchResults = await Promise.all(
         batch.map(async (profile) => {
-          const user = await ctx.db.get(profile.userId);
+          // userId es un Clerk user ID (string), no un documento de Convex
+          // La información del usuario (email, nombre) está en Clerk, no en Convex
           
           // Obtener doctores asignados del mapa
           const assignedDoctors = profile.assignedDoctors 
@@ -82,14 +96,27 @@ export const list = query({
                 .filter(m => m !== undefined)
             : [];
           
+          // Obtener centros médicos asignados del mapa
+          const assignedMedicalCenters = profile.assignedMedicalCenters
+            ? profile.assignedMedicalCenters
+                .map(id => medicalCentersMap.get(id))
+                .filter(mc => mc !== undefined)
+            : [];
+          
           return {
             ...profile,
-            user: user ? {
-              _id: user._id,
-              username: (user as any)?.email || null, // Usar username en lugar de email
-            } : null,
+            // userId es el Clerk user ID (string)
+            // La información del usuario (email, nombre) viene de Clerk, no de Convex
+            user: {
+              clerkUserId: profile.userId,
+              username: profile.name || null,
+              email: null, // El email está en Clerk
+            },
             assignedDoctors,
             assignedMedications,
+            assignedMedicalCenters,
+            // Incluir fecha de creación para formatear en el cliente
+            createdAt: profile.createdAt,
           };
         })
       );
@@ -110,65 +137,118 @@ export const create = mutation({
     role: v.union(v.literal("admin"), v.literal("visitor")), // Requerido, no opcional
     assignedDoctors: v.optional(v.array(v.id("doctors"))),
     assignedMedications: v.optional(v.array(v.id("medications"))),
+    assignedMedicalCenters: v.optional(v.array(v.id("medicalCenters"))),
   },
   handler: async (ctx, args) => {
-    // El usuario ya fue creado desde el cliente usando signIn con flow: "signUp"
-    // Solo necesitamos encontrar el usuario y crear/actualizar su perfil
+    // NOTA: Con Clerk, los usuarios se crean en Clerk, no en Convex
+    // Esta función crea/actualiza el perfil en Convex para un usuario que ya existe en Clerk
+    // El username debe ser el email del usuario en Clerk
     
-    // Verificar si el usuario existe (usando username como email para Convex Auth)
-    const existingUsers = await ctx.db
-      .query("users")
-      .collect();
-    
-    const existingUser = existingUsers.find(
-      (u) => ((u as any)?.email?.toLowerCase() || "") === args.username.toLowerCase()
-    );
-    
-    if (!existingUser) {
-      throw new Error(`Usuario no encontrado: ${args.username}. Asegúrate de que el usuario fue creado primero.`);
+    // Para crear un perfil para otro usuario (desde admin), necesitamos el clerkUserId
+    // Por ahora, asumimos que el usuario autenticado es quien está creando su propio perfil
+    // O que el admin está creando un perfil para un usuario que ya existe en Clerk
+    const currentUserId = await getClerkUserId(ctx);
+    if (!currentUserId) {
+      throw new Error("Not authenticated. Please sign in first.");
     }
     
-    const userId = existingUser._id;
+    // TODO: Implementar lógica para que admin pueda crear perfiles para otros usuarios
+    // Por ahora, solo creamos perfiles para el usuario autenticado
+    // El username se usa para identificar al usuario, pero necesitamos el clerkUserId real
+    const userId = currentUserId; // Temporal: solo para el usuario autenticado
     
     // Crear o actualizar perfil de usuario
+    // Nota: En Convex, las operaciones de base de datos son atómicas, así que no necesitamos delays
     let profile = await ctx.db
       .query("userProfiles")
       .withIndex("by_userId", (q) => q.eq("userId", userId))
       .first();
     
-    const finalRole = args.role;
+    // Asegurar que el rol por defecto sea "visitor" si no se especifica o es inválido
+    const finalRole = args.role || "visitor"; // Por defecto "visitor"
     const finalAssignedDoctors = args.assignedDoctors || [];
     const finalAssignedMedications = args.assignedMedications || [];
+    const finalAssignedMedicalCenters = args.assignedMedicalCenters || [];
     const isNewProfile = !profile;
     
+    // Validar que el rol sea válido
+    if (finalRole !== "admin" && finalRole !== "visitor") {
+      throw new Error(`Rol inválido: ${finalRole}. Debe ser "admin" o "visitor"`);
+    }
+    
+    console.log(`[users.create] Creating/updating profile for user ${args.username} with role: ${finalRole}`);
+    
     if (profile) {
-      // Actualizar perfil existente
+      // Actualizar perfil existente - SIEMPRE actualizar el rol
+      // Esto es importante porque el perfil podría haber sido creado por ensureUserProfile
+      // con un rol por defecto, y necesitamos sobrescribirlo con el rol correcto del admin
+      console.log(`[users.create] Updating existing profile ${profile._id}. Current role: ${profile.role}, New role: ${finalRole}`);
+      
+      // Actualizar el perfil
       await ctx.db.patch(profile._id, {
         name: args.name !== undefined ? args.name : profile.name,
-        role: finalRole, // Siempre actualizar el rol
+        role: finalRole, // FORZAR actualización del rol (el admin tiene la autoridad final)
         assignedDoctors: finalAssignedDoctors,
         assignedMedications: finalAssignedMedications,
+        assignedMedicalCenters: finalAssignedMedicalCenters,
       });
+      
+      // Verificar que se actualizó correctamente - leer directamente de la DB
+      // En Convex, las operaciones son atómicas, así que podemos verificar inmediatamente
+      const updatedProfile = await ctx.db.get(profile._id);
+      if (!updatedProfile) {
+        throw new Error("Error: Profile was deleted after update");
+      }
+      
+      if (updatedProfile.role !== finalRole) {
+        console.error(`[users.create] ERROR: Role not updated correctly. Expected: ${finalRole}, Got: ${updatedProfile.role}`);
+        // Intentar actualizar de nuevo
+        await ctx.db.patch(profile._id, { role: finalRole });
+        const retryProfile = await ctx.db.get(profile._id);
+        if (retryProfile?.role !== finalRole) {
+          throw new Error(`Error al actualizar perfil: el rol no se actualizó correctamente. Esperado: ${finalRole}, Obtenido: ${retryProfile?.role}`);
+        }
+      }
+      console.log(`[users.create] ✅ Profile updated successfully. Role: ${updatedProfile.role}`);
     } else {
-      // Crear nuevo perfil
-      await ctx.db.insert("userProfiles", {
+      // Crear nuevo perfil con el rol especificado
+      console.log(`[users.create] Creating new profile with role: ${finalRole}`);
+      const newProfileId = await ctx.db.insert("userProfiles", {
         userId,
-        role: finalRole,
+        role: finalRole, // Usar el rol del formulario
         name: args.name,
         assignedDoctors: finalAssignedDoctors,
         assignedMedications: finalAssignedMedications,
+        assignedMedicalCenters: finalAssignedMedicalCenters,
         createdAt: Date.now(),
       });
+      
+      // Verificar que se creó correctamente
+      // En Convex, las operaciones son atómicas, así que podemos verificar inmediatamente
+      const createdProfile = await ctx.db.get(newProfileId);
+      if (!createdProfile) {
+        throw new Error("Error: Profile was not created");
+      }
+      
+      if (createdProfile.role !== finalRole) {
+        console.error(`[users.create] ERROR: Profile not created correctly. Expected role: ${finalRole}, Got: ${createdProfile.role}`);
+        // Intentar actualizar el rol
+        await ctx.db.patch(newProfileId, { role: finalRole });
+        const retryProfile = await ctx.db.get(newProfileId);
+        if (retryProfile?.role !== finalRole) {
+          throw new Error(`Error al crear perfil: el rol no se guardó correctamente. Esperado: ${finalRole}, Obtenido: ${retryProfile?.role}`);
+        }
+      }
+      console.log(`[users.create] ✅ Profile created successfully. Role: ${createdProfile.role}`);
     }
     
     // Registrar actividad
-    const currentUserId = await getAuthUserId(ctx);
     if (currentUserId) {
       await ctx.db.insert("activityLogs", {
         userId: currentUserId,
         action: isNewProfile ? "create_user_profile" : "update_user_profile",
         entityType: "user",
-        entityId: userId.toString(),
+        entityId: userId,
         details: `${isNewProfile ? "Created" : "Updated"} user profile: ${args.username} with role: ${finalRole}`,
         createdAt: Date.now(),
       });
@@ -184,12 +264,13 @@ export const create = mutation({
   },
 });
 
-// Actualizar asignaciones de doctores y medicamentos
+// Actualizar asignaciones de doctores, medicamentos y centros médicos
 export const updateAssignments = mutation({
   args: {
-    userId: v.id("users"),
+    userId: v.string(),
     assignedDoctors: v.optional(v.array(v.id("doctors"))),
     assignedMedications: v.optional(v.array(v.id("medications"))),
+    assignedMedicalCenters: v.optional(v.array(v.id("medicalCenters"))),
   },
   handler: async (ctx, args) => {
     const profile = await ctx.db
@@ -208,11 +289,14 @@ export const updateAssignments = mutation({
     if (args.assignedMedications !== undefined) {
       updates.assignedMedications = args.assignedMedications;
     }
+    if (args.assignedMedicalCenters !== undefined) {
+      updates.assignedMedicalCenters = args.assignedMedicalCenters;
+    }
     
     await ctx.db.patch(profile._id, updates);
     
     // Registrar actividad
-    const currentUserId = await getAuthUserId(ctx);
+    const currentUserId = await getClerkUserId(ctx);
     if (currentUserId) {
       await ctx.db.insert("activityLogs", {
         userId: currentUserId,
@@ -230,7 +314,7 @@ export const updateAssignments = mutation({
 // Eliminar usuario (elimina el perfil, no el usuario de auth)
 export const deleteUser = mutation({
   args: {
-    userId: v.id("users"),
+    userId: v.string(),
   },
   handler: async (ctx, args) => {
     // Buscar y eliminar el perfil de usuario
@@ -243,15 +327,14 @@ export const deleteUser = mutation({
       throw new Error("User profile not found");
     }
     
-    // Obtener información del usuario antes de eliminar para el log
-    const user = await ctx.db.get(args.userId);
-    const username = (user as any)?.email || "unknown";
+    // userId es un Clerk user ID (string), la info del usuario está en Clerk
+    const username = profile.name || args.userId;
     
     // Eliminar el perfil
     await ctx.db.delete(profile._id);
     
     // Registrar actividad
-    const currentUserId = await getAuthUserId(ctx);
+    const currentUserId = await getClerkUserId(ctx);
     if (currentUserId) {
       await ctx.db.insert("activityLogs", {
         userId: currentUserId,

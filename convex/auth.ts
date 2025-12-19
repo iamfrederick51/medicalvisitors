@@ -1,70 +1,46 @@
-import { convexAuth } from "@convex-dev/auth/server";
-import { Password } from "@convex-dev/auth/providers/Password";
-import { query, mutation } from "./_generated/server";
-import { getAuthUserId } from "@convex-dev/auth/server";
+import { query } from "./_generated/server";
+import type { QueryCtx, MutationCtx } from "./_generated/server";
 
-// Configurar auth con Password provider
-// SOLUCIÓN: Usar Password() sin argumentos para evitar leer env vars durante schema load
-// Las variables de entorno se leerán en tiempo de ejecución, no durante la evaluación del schema
-export const { auth, signIn, signOut, store } = convexAuth({
-  providers: [Password()],
-});
+/**
+ * Helper para obtener el Clerk user ID desde el contexto de Convex
+ * Usa ctx.auth.getUserIdentity() que funciona cuando Convex está configurado con Clerk
+ */
+export async function getClerkUserId(ctx: QueryCtx | MutationCtx): Promise<string | null> {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) {
+    return null;
+  }
+  // El subject del JWT de Clerk es el user ID
+  return identity.subject;
+}
 
-// Mutation para asegurar que el perfil de usuario existe (se llama automáticamente cuando se necesita)
-// Esta función solo crea un perfil si no existe, pero NO sobrescribe roles existentes
-export const ensureUserProfile = mutation({
-  args: {},
-  handler: async (ctx) => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) {
-      throw new Error("Not authenticated");
-    }
-    
-    // Verificar si el perfil ya existe
-    const existingProfile = await ctx.db
-      .query("userProfiles")
-      .withIndex("by_userId", (q) => q.eq("userId", userId))
-      .first();
-    
-    if (existingProfile) {
-      // Si el perfil ya existe, retornarlo sin modificar (respeta el rol asignado)
-      return existingProfile._id;
-    }
-    
-    // Si no existe perfil, crear uno con rol por defecto basado en email
-    // (solo como fallback, normalmente el perfil se crea desde el admin)
-    const user = await ctx.db.get(userId);
-    if (!user) {
-      throw new Error("User not found");
-    }
-    
-    const userEmail = (user as any)?.email?.toLowerCase() || "";
-    const adminEmail = "almontefrederick5@gmail.com";
-    const isAdmin = userEmail === adminEmail.toLowerCase();
-    
-    // Crear perfil con rol apropiado (solo si no existe)
-    return await ctx.db.insert("userProfiles", {
-      userId,
-      role: isAdmin ? "admin" : "visitor",
-      createdAt: Date.now(),
-    });
-  },
-});
+/**
+ * Helper para obtener el rol del usuario desde Clerk publicMetadata
+ * Usa ctx.auth.getUserIdentity() para acceder a publicMetadata.role
+ */
+export async function getUserRole(ctx: QueryCtx | MutationCtx): Promise<string | null> {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) {
+    return null;
+  }
+  // Acceder a publicMetadata.role desde el JWT de Clerk
+  const publicMetadata = identity.publicMetadata as { role?: string } | undefined;
+  return publicMetadata?.role || null;
+}
 
+/**
+ * Query para obtener el usuario actual (compatibilidad con código existente)
+ */
 export const currentUser = query({
   args: {},
   handler: async (ctx) => {
-    try {
-      const userId = await getAuthUserId(ctx);
-      if (!userId) {
-        return null;
-      }
-      const user = await ctx.db.get(userId);
-      return user;
-    } catch (error) {
-      console.error("Error getting current user:", error);
+    const userId = await getClerkUserId(ctx);
+    if (!userId) {
       return null;
     }
+    // Retornar un objeto simple con el ID para compatibilidad
+    return {
+      _id: userId,
+    };
   },
 });
-
